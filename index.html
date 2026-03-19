@@ -319,6 +319,28 @@ h1 em{
 /* ── Shared entry animation ── */
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 
+/* ── Hacker Name ── */
+.hacker-wrap{
+  display:inline-flex;align-items:center;gap:4px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:15px;font-weight:700;
+  letter-spacing:3px;
+  margin-top:2px;
+}
+.hacker-prefix{color:var(--text3);font-size:13px;}
+.hacker-name{
+  background:linear-gradient(90deg,var(--green),var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  text-transform:uppercase;
+  min-width:1px;
+}
+.hacker-cursor{
+  color:var(--green);font-size:14px;
+  animation:curBlink .7s step-end infinite;
+  -webkit-text-fill-color:var(--green);
+}
+@keyframes curBlink{0%,100%{opacity:1;}50%{opacity:0;}}
+
 audio{display:none;}
 </style>
 </head>
@@ -329,7 +351,11 @@ audio{display:none;}
 <header>
   <div class="logo">🎙️</div>
   <h1>Voice<em>Link</em></h1>
-  <p class="sub">Free peer-to-peer calls · No account · Works anywhere</p>
+  <div class="hacker-wrap">
+    <span class="hacker-prefix">&gt;_</span>
+    <span class="hacker-name" id="hackerName"></span>
+    <span class="hacker-cursor">█</span>
+  </div>
 </header>
 
 <!-- ── MY ID ── -->
@@ -594,6 +620,46 @@ document.getElementById('callId').addEventListener('input',function(){
 document.getElementById('callId').addEventListener('keydown',function(e){
   if(e.key==='Enter')makeCall();
 });
+
+/* ── Hacker Typewriter ── */
+(function(){
+  var el=document.getElementById('hackerName');
+  var name='HAMZA';
+  var glitch='@#$%&!?X*';
+  var i=0,phase='typing',glitchTimer=null;
+
+  function randChar(){return glitch[Math.floor(Math.random()*glitch.length)];}
+
+  function type(){
+    if(phase==='typing'){
+      if(i<=name.length){
+        // show glitch char then real
+        var display=name.slice(0,i);
+        if(i<name.length) display+=randChar();
+        el.textContent=display;
+        i++;
+        setTimeout(type, i===name.length+1?60:90);
+      } else {
+        // fully typed — pause then fade out
+        setTimeout(function(){phase='erasing';i=name.length;erase();},2200);
+      }
+    }
+  }
+
+  function erase(){
+    if(i>=0){
+      el.textContent=name.slice(0,i);
+      i--;
+      setTimeout(erase,55);
+    } else {
+      // pause then retype
+      setTimeout(function(){phase='typing';i=0;type();},700);
+    }
+  }
+
+  // Start after header animates in
+  setTimeout(type,900);
+})();
 
 /* ── Boot ── */
 initPeer();
