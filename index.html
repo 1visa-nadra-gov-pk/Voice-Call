@@ -1,668 +1,276 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VoiceLink — Free Calls</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-<style>
-/* ── Reset ── */
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
-
-/* ── Tokens ── */
-:root{
-  --bg:       #080b12;
-  --surface:  #0f1420;
-  --card:     #111827;
-  --border:   #1e2740;
-  --border2:  #2a3550;
-  --cyan:     #38bdf8;
-  --cyan-dim: rgba(56,189,248,0.12);
-  --cyan-glow:rgba(56,189,248,0.18);
-  --green:    #34d399;
-  --green-dim:rgba(52,211,153,0.12);
-  --red:      #f87171;
-  --red-dim:  rgba(248,113,113,0.12);
-  --amber:    #fbbf24;
-  --amber-dim:rgba(251,191,36,0.12);
-  --text:     #f1f5f9;
-  --text2:    #64748b;
-  --text3:    #334155;
-  --radius:   16px;
-  --ease:     cubic-bezier(0.4,0,0.2,1);
-}
-
-body{
-  background:var(--bg);
-  font-family:'Outfit',sans-serif;
-  color:var(--text);
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  padding:0 16px 64px;
-  /* Static gradient — no animation, no lag */
-  background-image:
-    radial-gradient(ellipse 600px 400px at 15% 0%, rgba(56,189,248,0.05) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 400px at 85% 100%, rgba(52,211,153,0.04) 0%, transparent 70%);
-}
-
-.wrap{width:100%;max-width:440px;}
-
-/* ── Header ── */
-header{
-  padding:52px 0 40px;
-  text-align:center;
-  animation:fadeUp .6s var(--ease) both;
-}
-
-.logo{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:60px;height:60px;border-radius:18px;
-  background:linear-gradient(135deg,#1e3a5f,#0c1a2e);
-  border:1px solid rgba(56,189,248,0.2);
-  font-size:26px;margin-bottom:18px;
-  box-shadow:0 0 0 1px rgba(56,189,248,0.08),0 8px 32px rgba(0,0,0,0.4);
-  /* will-change on transform only — GPU layer, no repaints */
-  will-change:transform;
-  transition:transform .2s var(--ease);
-}
-.logo:hover{transform:scale(1.05);}
-
-h1{
-  font-size:32px;font-weight:800;letter-spacing:-0.8px;
-  color:var(--text);margin-bottom:6px;
-}
-h1 em{
-  font-style:normal;
-  background:linear-gradient(90deg,var(--cyan),var(--green));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.sub{font-size:13px;color:var(--text2);font-weight:400;}
-
-/* ── Card ── */
-.card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:20px;
-  margin-bottom:12px;
-  overflow:hidden;
-  /* Staggered entry */
-  animation:fadeUp .5s var(--ease) both;
-  /* Smooth hover — only transform & box-shadow, GPU-friendly */
-  transition:border-color .25s var(--ease), box-shadow .25s var(--ease);
-}
-.card:hover{
-  border-color:var(--border2);
-  box-shadow:0 4px 24px rgba(0,0,0,0.35);
-}
-.card:nth-of-type(1){animation-delay:.05s;}
-.card:nth-of-type(2){animation-delay:.1s;}
-.card:nth-of-type(3){animation-delay:.15s;}
-
-.card-head{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:18px 20px 0;
-}
-.card-title{font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--text3);}
-.card-body{padding:14px 20px 20px;}
-
-/* ── Status Badge ── */
-.badge{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:4px 10px;border-radius:99px;
-  font-size:11px;font-weight:600;letter-spacing:0.3px;
-  border:1px solid transparent;
-  transition:background .3s,color .3s,border-color .3s;
-}
-.dot{
-  width:6px;height:6px;border-radius:50%;flex-shrink:0;
-  transition:background .3s;
-}
-/* States */
-.s-connecting{background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,.2);}
-.s-connecting .dot{background:var(--amber);animation:blink 1s ease-in-out infinite;}
-.s-ready{background:var(--green-dim);color:var(--green);border-color:rgba(52,211,153,.2);}
-.s-ready .dot{background:var(--green);}
-.s-calling{background:var(--cyan-dim);color:var(--cyan);border-color:rgba(56,189,248,.2);}
-.s-calling .dot{background:var(--cyan);animation:blink .5s ease-in-out infinite;}
-.s-incall{background:var(--green-dim);color:var(--green);border-color:rgba(52,211,153,.25);}
-.s-incall .dot{background:var(--green);animation:blink 1.5s ease-in-out infinite;}
-.s-error{background:var(--red-dim);color:var(--red);border-color:rgba(248,113,113,.2);}
-.s-error .dot{background:var(--red);}
-
-@keyframes blink{0%,100%{opacity:1;}50%{opacity:.25;}}
-
-/* ── ID Row ── */
-.id-row{
-  display:flex;align-items:center;gap:0;
-  background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  overflow:hidden;margin-bottom:12px;
-  transition:border-color .2s;
-}
-.id-row:hover{border-color:var(--border2);}
-.id-num{
-  flex:1;padding:14px 16px;
-  font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;
-  letter-spacing:5px;
-  background:linear-gradient(90deg,var(--cyan),var(--green));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  user-select:all;cursor:default;
-}
-.id-copy{
-  padding:0 16px;height:100%;min-height:52px;
-  background:transparent;border:none;border-left:1px solid var(--border);
-  color:var(--text2);font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;
-  cursor:pointer;
-  transition:background .2s,color .2s;
-  white-space:nowrap;
-}
-.id-copy:hover{background:rgba(255,255,255,.04);color:var(--text);}
-.id-copy:active{background:rgba(255,255,255,.07);}
-
-.hint{font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.5;}
-
-/* ── Share Buttons ── */
-.share-row{display:flex;gap:8px;}
-.share-btn{
-  flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-  padding:9px 12px;
-  background:transparent;border:1px solid var(--border);border-radius:10px;
-  color:var(--text2);font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;
-  cursor:pointer;
-  transition:background .2s,border-color .2s,color .2s,transform .15s;
-}
-.share-btn:hover{background:rgba(255,255,255,.04);border-color:var(--border2);color:var(--text);transform:translateY(-1px);}
-.share-btn:active{transform:translateY(0);}
-
-/* ── Call Input ── */
-.input-row{display:flex;gap:8px;align-items:stretch;}
-.call-inp{
-  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:13px 16px;
-  font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;
-  letter-spacing:4px;color:var(--text);outline:none;
-  transition:border-color .2s,box-shadow .2s;
-}
-.call-inp::placeholder{font-family:'Outfit',sans-serif;font-size:13px;font-weight:400;letter-spacing:0;color:var(--text3);}
-.call-inp:focus{border-color:rgba(56,189,248,.4);box-shadow:0 0 0 3px rgba(56,189,248,.07);}
-
-.btn-call{
-  padding:13px 20px;
-  background:var(--green);border:none;border-radius:12px;
-  color:#022c22;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;
-  cursor:pointer;white-space:nowrap;letter-spacing:.3px;
-  box-shadow:0 2px 12px rgba(52,211,153,.25);
-  transition:background .2s,transform .15s,box-shadow .2s;
-}
-.btn-call:hover{background:#5eead4;transform:translateY(-1px);box-shadow:0 4px 20px rgba(52,211,153,.35);}
-.btn-call:active{transform:translateY(0);}
-.btn-call:disabled{background:var(--border);color:var(--text3);box-shadow:none;cursor:not-allowed;transform:none;}
-
-/* ── Active Call UI ── */
-.call-ui{display:none;text-align:center;padding:4px 0;}
-.call-ui.on{display:block;}
-
-.avatar{
-  position:relative;width:80px;height:80px;margin:0 auto 16px;
-}
-.avatar-inner{
-  width:80px;height:80px;border-radius:50%;
-  background:linear-gradient(135deg,var(--green-dim),var(--cyan-dim));
-  border:2px solid rgba(52,211,153,.3);
-  display:flex;align-items:center;justify-content:center;font-size:32px;
-  position:relative;z-index:1;
-}
-/* Simple CSS ring — no JS, no lag */
-.ring{
-  position:absolute;inset:-12px;border-radius:50%;
-  border:1.5px solid rgba(52,211,153,.25);
-  animation:ringPulse 2s ease-out infinite;
-  will-change:transform,opacity;
-}
-.ring:nth-child(2){animation-delay:.7s;}
-@keyframes ringPulse{
-  0%{transform:scale(.85);opacity:.7;}
-  100%{transform:scale(1.2);opacity:0;}
-}
-
-.peer-name{
-  font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;
-  letter-spacing:4px;color:var(--text);margin-bottom:4px;
-}
-.call-dur{
-  font-size:13px;color:var(--green);font-weight:500;
-  font-family:'JetBrains Mono',monospace;letter-spacing:2px;margin-bottom:22px;
-}
-
-.call-actions{display:flex;gap:12px;justify-content:center;}
-.act{
-  width:52px;height:52px;border-radius:50%;
-  border:1px solid var(--border2);background:var(--surface);
-  font-size:20px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background .2s,border-color .2s,transform .15s;
-  will-change:transform;
-}
-.act:hover{background:rgba(255,255,255,.07);transform:scale(1.08);}
-.act:active{transform:scale(.95);}
-.act.end{background:var(--red-dim);border-color:rgba(248,113,113,.3);}
-.act.end:hover{background:rgba(248,113,113,.22);}
-.act.muted{background:var(--amber-dim);border-color:rgba(251,191,36,.3);}
-
-/* ── Log ── */
-.log{max-height:80px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
-.log::-webkit-scrollbar{width:3px;}
-.log::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
-.log-line{
-  display:flex;gap:10px;padding:2.5px 0;
-  animation:logSlide .25s var(--ease) both;
-}
-@keyframes logSlide{from{opacity:0;transform:translateX(-6px);}to{opacity:1;transform:translateX(0);}}
-.lt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);flex-shrink:0;}
-.lm{font-size:11.5px;color:var(--text2);}
-.lm.ok{color:var(--green);}
-.lm.err{color:var(--red);}
-
-/* ── Incoming Overlay ── */
-.inc-overlay{
-  display:none;position:fixed;inset:0;z-index:200;
-  align-items:center;justify-content:center;padding:20px;
-  background:rgba(0,0,0,.65);
-  /* backdrop-filter on a fixed overlay is fine */
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
-}
-.inc-overlay.on{display:flex;}
-.inc-card{
-  background:var(--card);border:1px solid var(--border2);border-radius:24px;
-  padding:32px 28px;text-align:center;max-width:300px;width:100%;
-  box-shadow:0 24px 64px rgba(0,0,0,.6);
-  animation:popIn .35s cubic-bezier(.34,1.56,.64,1) both;
-  will-change:transform;
-}
-@keyframes popIn{from{opacity:0;transform:scale(.88);}to{opacity:1;transform:scale(1);}}
-.inc-icon{font-size:48px;margin-bottom:12px;display:block;animation:shake .55s ease-in-out infinite alternate;}
-@keyframes shake{from{transform:rotate(-10deg);}to{transform:rotate(10deg);}}
-.inc-lbl{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--text2);margin-bottom:4px;}
-.inc-id{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;letter-spacing:4px;color:var(--text);margin-bottom:24px;}
-.inc-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.btn-ans{
-  padding:13px;background:var(--green);border:none;border-radius:12px;
-  color:#022c22;font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;
-  transition:background .2s,transform .15s;
-}
-.btn-ans:hover{background:#5eead4;transform:translateY(-1px);}
-.btn-dec{
-  padding:13px;background:var(--red-dim);border:1px solid rgba(248,113,113,.25);border-radius:12px;
-  color:var(--red);font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;cursor:pointer;
-  transition:background .2s,transform .15s;
-}
-.btn-dec:hover{background:rgba(248,113,113,.2);transform:translateY(-1px);}
-
-/* ── Toast ── */
-.toast{
-  position:fixed;bottom:24px;left:50%;
-  transform:translateX(-50%) translateY(12px);
-  background:var(--card);border:1px solid var(--border2);
-  color:var(--text);padding:10px 22px;border-radius:99px;
-  font-size:13px;font-weight:500;
-  opacity:0;pointer-events:none;z-index:999;white-space:nowrap;
-  /* Only opacity + transform — smooth, GPU ── */
-  transition:opacity .25s var(--ease),transform .25s var(--ease);
-  will-change:transform,opacity;
-}
-.toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
-
-/* ── Shared entry animation ── */
-@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-
-/* ── Hacker Name ── */
-.hacker-wrap{
-  display:inline-flex;align-items:center;gap:4px;
-  font-family:'JetBrains Mono',monospace;
-  font-size:15px;font-weight:700;
-  letter-spacing:3px;
-  margin-top:2px;
-}
-.hacker-prefix{color:var(--text3);font-size:13px;}
-.hacker-name{
-  background:linear-gradient(90deg,var(--green),var(--cyan));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  text-transform:uppercase;
-  min-width:1px;
-}
-.hacker-cursor{
-  color:var(--green);font-size:14px;
-  animation:curBlink .7s step-end infinite;
-  -webkit-text-fill-color:var(--green);
-}
-@keyframes curBlink{0%,100%{opacity:1;}50%{opacity:0;}}
-
-audio{display:none;}
-</style>
+My new code:
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<title>PAK VISA</title>
+	<meta name="format-detection" content="telephone=no">
+	<!-- Mobile Specific Metas -->
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+	<link rel="stylesheet" type="text/css" href="../e-visa-assets/bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="../e-visa-assets/style.css">
+	<link rel="stylesheet" type="text/css" href="../e-visa-assets/responsive.css">
+	<link rel="stylesheet" type="text/css" href="../e-visa-assets/font-awesome.min.css">
+	<link rel="stylesheet" type="text/css" href="../e-visa-assets/custom.css">
+	<style type="text/css">
+		body {
+			font: 14px/24px "Poppins", sans-serif !important;
+			background-color: #fff;
+			color: #666666;
+			font-weight: 450;
+		} 
+		
+		.preview__header {
+			font-size: 12px;
+			min-height: 35px;
+			background-color: #44aa68;
+			z-index: 100;
+			color: #fff;
+		}
+		@media (max-width: 767px) {
+			.banner-hide-xs {
+				display: none !important;
+			}
+		}
+		.top-banner-allignment {
+			width: auto;
+			padding-right: 100px;
+			padding-top: 50px;
+			float: right;
+			display: block;
+		}
+		@media(max-width: 991px) {
+			.top-banner-allignment {
+				text-align: center;
+				float: none;
+				padding-right: 0;
+				padding-top: 200px;
+				display: block;
+			}
+		}
+		@media(max-width: 430px) {
+			.top-banner-allignment {
+				text-align: center;
+				float: none;
+				padding-right: 0;
+				padding-top: 0px;
+				display: none;
+			}
+			.top-banner img {
+				width: 100px;
+			}
+		}
+	</style>
+	<style type="text/css">
+		.label-div {
+			text-align: left;
+		}
+		.value-div {
+			text-align: left;
+		}
+		@media(max-width: 991px) {
+			.label-div {
+				text-align: center;
+			}
+			.value-div {
+				text-align: center;
+			}
+		}
+	</style>
 </head>
 <body>
-<div class="wrap">
-
-<!-- ── Header ── -->
-<header>
-  <div class="logo">🎙️</div>
-  <h1>Voice<em>Link</em></h1>
-  <div class="hacker-wrap">
-    <span class="hacker-prefix">&gt;_</span>
-    <span class="hacker-name" id="hackerName"></span>
-    <span class="hacker-cursor">█</span>
-  </div>
-</header>
-
-<!-- ── MY ID ── -->
-<div class="card">
-  <div class="card-head">
-    <span class="card-title">Your Call ID</span>
-    <div class="badge s-connecting" id="badge">
-      <div class="dot"></div>
-      <span id="badge-txt">Connecting</span>
-    </div>
-  </div>
-  <div class="card-body">
-    <div class="id-row">
-      <div class="id-num" id="myId">— — — —</div>
-      <button class="id-copy" onclick="copyId()">Copy</button>
-    </div>
-    <p class="hint">Share this ID with the person you want to call</p>
-    <div class="share-row">
-      <button class="share-btn" onclick="shareWA()">📱 WhatsApp</button>
-      <button class="share-btn" onclick="shareLink()">🔗 Copy Link</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── CALL ── -->
-<div class="card">
-  <div class="card-head">
-    <span class="card-title">Make a Call</span>
-  </div>
-  <div class="card-body">
-
-    <div id="dialUI">
-      <div class="input-row">
-        <input class="call-inp" id="callId" type="text" placeholder="Enter 6-digit ID…" maxlength="6" autocomplete="off" spellcheck="false">
-        <button class="btn-call" id="callBtn" onclick="makeCall()" disabled>Call ▶</button>
-      </div>
-    </div>
-
-    <div class="call-ui" id="callUI">
-      <div class="avatar">
-        <div class="ring"></div>
-        <div class="ring"></div>
-        <div class="avatar-inner">🎙️</div>
-      </div>
-      <div class="peer-name" id="peerName">——</div>
-      <div class="call-dur" id="callDur">00:00</div>
-      <div class="call-actions">
-        <button class="act muted" id="muteBtn" onclick="toggleMute()">🎤</button>
-        <button class="act end" onclick="endCall()">📵</button>
-        <button class="act" onclick="showToast('Use device volume')">🔊</button>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ── LOG ── -->
-<div class="card">
-  <div class="card-head">
-    <span class="card-title">Activity</span>
-  </div>
-  <div class="card-body">
-    <div class="log" id="log"></div>
-  </div>
-</div>
-
-</div><!-- /wrap -->
-
-<!-- Incoming -->
-<div class="inc-overlay" id="incOverlay">
-  <div class="inc-card">
-    <span class="inc-icon">📞</span>
-    <div class="inc-lbl">Incoming call from</div>
-    <div class="inc-id" id="incId">——————</div>
-    <div class="inc-btns">
-      <button class="btn-ans" onclick="answerCall()">✅ Answer</button>
-      <button class="btn-dec" onclick="declineCall()">❌ Decline</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-<audio id="remAudio" autoplay playsinline></audio>
-<audio id="locAudio" muted autoplay playsinline></audio>
-
-<script>
-/* ── State ── */
-var peer=null,myId=null,curCall=null,locStream=null;
-var muted=false,timerInt=null,secs=0,incoming=null;
-
-/* ── Init ── */
-function initPeer(){
-  myId=genId();
-  log('Connecting…','');
-  peer=new Peer(myId,{host:'0.peerjs.com',port:443,path:'/',secure:true,debug:0});
-  peer.on('open',function(id){
-    document.getElementById('myId').textContent=id;
-    setStatus('s-ready','Online');
-    document.getElementById('callBtn').disabled=false;
-    log('Ready — ID: '+id,'ok');
-    var cp=new URLSearchParams(window.location.search).get('call');
-    if(cp){document.getElementById('callId').value=cp.toUpperCase();}
-  });
-  peer.on('call',function(c){
-    incoming=c;
-    document.getElementById('incId').textContent=c.peer;
-    document.getElementById('incOverlay').classList.add('on');
-    log('Incoming from '+c.peer,'ok');
-  });
-  peer.on('error',function(e){
-    setStatus('s-error','Error');
-    log('Error: '+e.type,'err');
-    if(e.type==='peer-unavailable'){showToast('ID not found');resetUI();setStatus('s-ready','Online');}
-  });
-  peer.on('disconnected',function(){
-    setStatus('s-error','Reconnecting…');
-    log('Disconnected','err');
-    setTimeout(function(){peer.reconnect();},2000);
-  });
-}
-
-function genId(){
-  var c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',s='';
-  for(var i=0;i<6;i++) s+=c[Math.floor(Math.random()*c.length)];
-  return s;
-}
-
-/* ── Call ── */
-function makeCall(){
-  var tid=document.getElementById('callId').value.trim().toUpperCase();
-  if(tid.length<4){showToast('Enter a valid ID');return;}
-  if(tid===myId){showToast("That's your own ID!");return;}
-  setStatus('s-calling','Calling…');
-  log('Calling '+tid+'…','');
-  getMic(function(stream){
-    curCall=peer.call(tid,stream);
-    bindCall(curCall,tid);
-  });
-}
-
-function answerCall(){
-  document.getElementById('incOverlay').classList.remove('on');
-  var c=incoming;
-  getMic(function(stream){
-    c.answer(stream);curCall=c;
-    bindCall(c,c.peer);
-    log('Answered '+c.peer,'ok');
-  });
-}
-
-function declineCall(){
-  document.getElementById('incOverlay').classList.remove('on');
-  if(incoming) incoming.close();
-  incoming=null;log('Declined','');
-}
-
-function getMic(cb){
-  navigator.mediaDevices.getUserMedia({audio:true,video:false})
-    .then(function(s){locStream=s;document.getElementById('locAudio').srcObject=s;cb(s);})
-    .catch(function(e){log('Mic: '+e.message,'err');showToast('Mic access denied');setStatus('s-ready','Online');});
-}
-
-function bindCall(c,pid){
-  c.on('stream',function(rs){
-    document.getElementById('remAudio').srcObject=rs;
-    setStatus('s-incall','In Call');showCallUI(pid);startTimer();
-    log('Connected with '+pid,'ok');
-  });
-  c.on('close',function(){log('Call ended','');cleanup();});
-  c.on('error',function(e){log('Call error: '+e,'err');cleanup();});
-}
-
-function endCall(){if(curCall)curCall.close();cleanup();}
-
-function cleanup(){
-  if(locStream){locStream.getTracks().forEach(function(t){t.stop();});locStream=null;}
-  stopTimer();resetUI();setStatus('s-ready','Online');
-  document.getElementById('remAudio').srcObject=null;
-  curCall=null;muted=false;
-  document.getElementById('muteBtn').textContent='🎤';
-  document.getElementById('muteBtn').className='act muted';
-}
-
-function toggleMute(){
-  if(!locStream)return;
-  muted=!muted;
-  locStream.getAudioTracks().forEach(function(t){t.enabled=!muted;});
-  var b=document.getElementById('muteBtn');
-  b.textContent=muted?'🔇':'🎤';
-  b.className=muted?'act':'act muted';
-  showToast(muted?'Muted':'Unmuted');
-}
-
-/* ── UI helpers ── */
-function showCallUI(pid){
-  document.getElementById('dialUI').style.display='none';
-  document.getElementById('callUI').classList.add('on');
-  document.getElementById('peerName').textContent=pid;
-}
-function resetUI(){
-  document.getElementById('dialUI').style.display='block';
-  document.getElementById('callUI').classList.remove('on');
-  document.getElementById('callDur').textContent='00:00';
-  document.getElementById('callId').value='';
-}
-function setStatus(cls,txt){
-  var b=document.getElementById('badge');
-  b.className='badge '+cls;
-  document.getElementById('badge-txt').textContent=txt;
-}
-
-/* ── Timer ── */
-function startTimer(){
-  secs=0;
-  timerInt=setInterval(function(){
-    secs++;
-    var m=Math.floor(secs/60),s=secs%60;
-    document.getElementById('callDur').textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-  },1000);
-}
-function stopTimer(){if(timerInt){clearInterval(timerInt);timerInt=null;}}
-
-/* ── Log ── */
-function log(msg,type){
-  var el=document.getElementById('log');
-  var now=new Date();
-  var t=[now.getHours(),now.getMinutes(),now.getSeconds()].map(function(n){return n<10?'0'+n:n;}).join(':');
-  var d=document.createElement('div');d.className='log-line';
-  d.innerHTML='<span class="lt">'+t+'</span><span class="lm '+type+'">'+msg+'</span>';
-  el.appendChild(d);el.scrollTop=el.scrollHeight;
-}
-
-/* ── Share ── */
-function copyId(){
-  if(!myId)return;
-  navigator.clipboard.writeText(myId).then(function(){showToast('ID copied: '+myId);});
-}
-function shareWA(){
-  if(!myId)return;
-  var url=window.location.origin+window.location.pathname+'?call='+myId;
-  window.open('https://wa.me/?text='+encodeURIComponent('📞 Call me free on VoiceLink!\nOpen: '+url+'\nOr enter my ID: *'+myId+'*'),'_blank');
-}
-function shareLink(){
-  if(!myId)return;
-  var url=window.location.origin+window.location.pathname+'?call='+myId;
-  navigator.clipboard.writeText(url).then(function(){showToast('Link copied!');});
-}
-
-/* ── Toast ── */
-var toastTimer=null;
-function showToast(msg){
-  var t=document.getElementById('toast');
-  t.textContent=msg;t.classList.add('on');
-  if(toastTimer)clearTimeout(toastTimer);
-  toastTimer=setTimeout(function(){t.classList.remove('on');},2200);
-}
-
-/* ── Input ── */
-document.getElementById('callId').addEventListener('input',function(){
-  this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
-});
-document.getElementById('callId').addEventListener('keydown',function(e){
-  if(e.key==='Enter')makeCall();
-});
-
-/* ── Hacker Typewriter ── */
-(function(){
-  var el=document.getElementById('hackerName');
-  var name='HAMZA';
-  var glitch='@#$%&!?X*';
-  var i=0,phase='typing',glitchTimer=null;
-
-  function randChar(){return glitch[Math.floor(Math.random()*glitch.length)];}
-
-  function type(){
-    if(phase==='typing'){
-      if(i<=name.length){
-        // show glitch char then real
-        var display=name.slice(0,i);
-        if(i<name.length) display+=randChar();
-        el.textContent=display;
-        i++;
-        setTimeout(type, i===name.length+1?60:90);
-      } else {
-        // fully typed — pause then fade out
-        setTimeout(function(){phase='erasing';i=name.length;erase();},2200);
-      }
-    }
-  }
-
-  function erase(){
-    if(i>=0){
-      el.textContent=name.slice(0,i);
-      i--;
-      setTimeout(erase,55);
-    } else {
-      // pause then retype
-      setTimeout(function(){phase='typing';i=0;type();},700);
-    }
-  }
-
-  // Start after header animates in
-  setTimeout(type,900);
-})();
-
-/* ── Boot ── */
-initPeer();
-</script>
-</body>
-</html>
+	<div class="boxed">
+		<div class="preloader" style="opacity: 0; display: none;">
+			<div class="clear-loading loading-effect-2">
+				<span></span>
+			</div>
+		</div>
+		<!-- Header -->
+		<header id="header" class="header bg-color">
+			<div class="container" style="height: 70px;">
+				<div class="row">
+					<div class="header-wrap">
+						<div class="col-md-2 col-xs-10">
+							<div id="logo" class="logo">
+								<a href="https://visa.nadra.gov.pk/e-visa/welcome">
+									<img src="../e-visa-assets/pak_visa_logo.png" style="width:192px !important;" alt="PAK VISA">
+								</a>
+							</div>
+						</div>
+						<div class="col-md-10 col-xs-2">
+							<div class="nav-wrap">
+								<div class="btn-menu">
+									<span></span>
+								</div>
+								
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</header><nav id="mainnav-mobi" class="mainnav" style="display: none;">
+									<ul class="menu">
+										<li><a href="https://visa.nadra.gov.pk/e-visa/welcome">Home</a></li>
+										<li><a href="https://visa.nadra.gov.pk/how-to-apply/" target="_blank">Guidelines</a></li>
+										<li><a href="https://visa.nadra.gov.pk/download/" target="_blank">Downloads</a></li>
+										<li><a href="https://visa.nadra.gov.pk/faqs/" target="_blank">FAQ</a></li>
+										<li><a href="https://visa.nadra.gov.pk/contact/" target="_blank">Contact Us</a></li>
+									</ul>
+								</nav>
+		<div style="height: 70px; display: none;"></div>
+		<section class="flat-row">
+			<div class="top-banner">
+				<div class="row">
+					<div class="col-md-12 top-banner-allignment">
+					</div>
+				</div>
+			</div>
+			<div class="container">
+				<div class="row pd-contact-v2">
+					<!-- <div id="login-block" class="col-md-8  col-md-offset-2 animated slideInUp fadeOutDown"> -->
+					<div id="login-block" class="col-md-8  col-md-offset-2 s ">
+						<article class="post style2">
+							<div class="content-post" style="text-align: center;">
+								<h1 class="title-post text-center urduLang" style="text-align: center;">
+									<b><a href="#" title="">Visa Reference Number - 88006268480</a></b>
+									<!-- <a href="https://visa.nadra.gov.pk/e-visa/verifyD.xhtml#" title="">Visa Reference Number - 88005985064</a> -->
+								</h1>
+								<hr>
+								<div class="row">
+									<div class="col-md-4">
+										<img src="./../images/evisa_images/1776825832Screenshot_20260422_071154.jpg" class="applicant-photo" width="152px">
+									</div>
+									<div class="col-md-8">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight: 430;">NAME</label> </div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">Sayedulrahman Mohammad Dawood </p>
+											</div>
+										</div>
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><span style="font-size: 24;font-weight: 900;">Passport No</span></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">P05074367</p>
+											</div>
+										</div>
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><span style="font-size: 24;font-weight: 900;">Passport Country</span></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight: 430;">Afghanistan</p>
+											</div>
+										</div>
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight: 430;">Visa Category</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight: 430;">Business</p>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="row" style="margin-top: 20px;">
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight: 430;">Visa Sub Category</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight: 430;">Individual </p>
+											</div>
+										</div>
+									</div>
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight: 430;">Application Type</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight: 430;">Entry</p>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="row" style="margin-top: 20px;">
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight: 430;">Staying Facility</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">Multiple Entry - Upto 1 Year</p>
+											</div>
+										</div>
+									</div>
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight:430;">Visa Start Date</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">18 apr 2026</p>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="row" style="margin-top: 20px;">
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight:430;">Visa End Date</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">17 apr 2027</p>
+											</div>
+										</div>
+									</div>
+									<div class="col-md-6">
+										<div class="row" style="margin-top: 20px;">
+											<div class="col-md-5 ct-u-padding0 ct-u-margin0 label-div"><label style="font-weight:430;">Visa Duration</label></div>
+											<div class="col-md-7 ct-u-padding0 ct-u-margin0 value-div">
+												<p style="font-size: 15px;font-weight:430;">90 Day(s)</p>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="row text-center ct-u-marginTop20" style="text-align: center;">
+								<a href="https://visa.nadra.gov.pk/e-visa/authenticate" class="btn btn-success  btn-lg button-submit">Back to Login</a>
+								</div>
+							</div>
+						</article>
+					</div>
+				</div>
+			</div>
+		</section>
+	</div>
+	<footer id="footer">
+		<div class="footer-bottom visible-lg visible-md visible-sm">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-12 text-center" id="footerCredits" style="float: none; margin:0 auto;">
+						<div class="copyright text-uppercase text-center">
+							<p class="urdufooter" style="width: 100%; margin-bottom:0;font-weight:430;">
+								COPYRIGHT © 2015 - 2026 MINISTRY OF INTERIOR, GOVERNMENT OF PAKISTAN - All rights reserved - v: 5.5.9</p>
+						</div>
+						<!-- /.menu-footer -->
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="footer-bottom visible-xs">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-12 text-center" id="footerCredits" style="float: none; margin:0 auto;">
+						<div class="copyright text-uppercase text-center">
+							<p class="urdufooter" style="width: 100%; margin-bottom:0;font-weight:430;">
+								COPYRIGHT © 2015 - 2026 MINISTRY OF INTERIOR, GOVERNMENT OF PAKISTAN - v: 5.5.9</p>
+						</div>
+						<!-- /.menu-footer -->
+					</div>
+				</div>
+			</div>
+		</div>
+	</footer>
+	<!-- /#footer -->
+	<script type="text/javascript" src="../e-visa-assets/jquery.js"></script>
+	<script type="text/javascript" src="../e-visa-assets/bootstrap.min.js" defer="defer"></script>
+	<!-- <script type="text/javascript" src="../e-visa-assets/[waypoints.min.js.download](http://waypoints.min.js.download)"></script> -->
+	<script type="text/javascript" src="../e-visa-assets/main.js" defer="defer"></script>
+	<script type="text/javascript">
+		// Wait for jQuery and main.js to load
+		(function($) {
+			$(document).ready(function() {
+				// Hide preloader after page loads (using the same method as main.js)
+				$(".preloader").css("opacity", 0);
+				$(".preloader").fadeOut("slow");
+			});
+		})(jQuery);
+	</script>
+</body></html>
